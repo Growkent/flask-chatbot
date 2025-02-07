@@ -1,0 +1,3 @@
+@echo off
+cd C:\Users\Hulya\Desktop\flask-chatbot
+start /B python app.py
