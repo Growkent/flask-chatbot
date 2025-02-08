@@ -7,12 +7,15 @@ app = Flask(__name__)
 def home():
     return "Flask uygulaman çalışıyor!"
 
-# OpenAI API Anahtarını Tanımla
-openai.api_key = "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"
+# OpenAI API Anahtarını Tanımla (LÜTFEN GİZLİ TUT)
+openai.api_key = "sk-...UYYA"
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    user_message = request.json.get("message").lower()
+    user_message = request.json.get("message", "")
+
+    if not user_message:
+        return jsonify({"reply": "Lütfen bir mesaj girin."}), 400
 
     # Yasaklı konular
     forbidden_topics = ["marihuana", "cannabis", "kenevir", "tohumu", "yetiştiricilik"]
@@ -34,17 +37,21 @@ def chat():
     
     elif "iş başvurusu" in user_message:
         return jsonify({"reply": "İş başvurusu yapmak için destek@growkent.com mail adresine CV'nizi gönderebilirsiniz."})
-    
-    # Genel OpenAI Yanıtı
-    response = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "Sen, Growkent'in akıllı müşteri destek asistanısın. Müşterilere doğru, net ve profesyonel yanıtlar veriyorsun. Growkent, hobi bahçecilik ürünleri satmaktadır. Müşterilere sipariş, kargo, iade, ürün kullanımı ve kampanyalar hakkında yardımcı oluyorsun."},
-            {"role": "user", "content": user_message}
-        ]
-    )
 
-    return jsonify({"reply": response.choices[0].message.content})
+    # Genel OpenAI Yanıtı
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Sen, Growkent'in akıllı müşteri destek asistanısın. Müşterilere doğru, net ve profesyonel yanıtlar veriyorsun. Growkent, hobi bahçecilik ürünleri satmaktadır. Müşterilere sipariş, kargo, iade, ürün kullanımı ve kampanyalar hakkında yardımcı oluyorsun."},
+                {"role": "user", "content": user_message}
+            ]
+        )
+        reply = response["choices"][0]["message"]["content"]
+    except Exception as e:
+        reply = f"Bir hata oluştu: {str(e)}"
+
+    return jsonify({"reply": reply})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)
