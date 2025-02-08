@@ -1,57 +1,70 @@
 from flask import Flask, request, jsonify
-import openai
+from openai import OpenAI
+import datetime
 
 app = Flask(__name__)
+client = OpenAI()
 
-@app.route("/")
+@app.route("/", methods=["GET"])
 def home():
-    return "Flask uygulaman çalışıyor!"
-
-# OpenAI API Anahtarını Tanımla (LÜTFEN GİZLİ TUT)
-openai.api_key = "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"
+    return "Chatbot API Çalışıyor! Lütfen /chat endpoint’ini POST methodu ile kullanın."
 
 @app.route("/chat", methods=["POST"])
 def chat():
     user_message = request.json.get("message", "")
-
+    customer_id = request.json.get("customer_id", "anonim")
+    
     if not user_message:
-        return jsonify({"reply": "Lütfen bir mesaj girin."}), 400
+        return jsonify({"error": "Mesaj içeriği boş olamaz"}), 400
 
-    # Yasaklı konular
-    forbidden_topics = ["marihuana", "cannabis", "kenevir", "tohumu", "yetiştiricilik"]
-    if any(topic in user_message for topic in forbidden_topics):
-        return jsonify({"reply": "Üzgünüm, bu konu hakkında yardımcı olamıyorum."})
-
-    # Özel yanıtlar
-    if "sipariş takibi" in user_message or "kargom nerede" in user_message:
-        return jsonify({"reply": "Sipariş numaranızı paylaşın, kargo durumunuzu kontrol edelim."})
-    
-    elif "iade nasıl yapılır" in user_message or "ürünü iade etmek istiyorum" in user_message:
-        return jsonify({"reply": "Ürünü 14 gün içinde orijinal ambalajında iade edebilirsiniz. Detaylı bilgi: [İade Politikası Linki]"})
-    
-    elif "kampanyalar" in user_message or "indirim var mı" in user_message:
-        return jsonify({"reply": "Şu an devam eden kampanyalarımız: Outlet ürünlerde %50'ye varan indirimler, Kasa önü fırsat ürünlerinde %10 indirim, Haftanın fırsat ürününde %15 indirim! Daha fazla bilgi için web sitemizi ziyaret edebilirsiniz: https://www.growkent.com"})
-    
-    elif "hangi gübreyi kullanmalıyım" in user_message:
-        return jsonify({"reply": "Bitkileriniz için en uygun gübre seçimi için hangi bitkiyi yetiştirdiğinizi belirtir misiniz? Önerdiğimiz gübreler hakkında detaylı bilgi için: [Ürün Linki]"})
-    
-    elif "iş başvurusu" in user_message:
-        return jsonify({"reply": "İş başvurusu yapmak için destek@growkent.com mail adresine CV'nizi gönderebilirsiniz."})
-
-    # Genel OpenAI Yanıtı
     try:
-        response = openai.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Sen, Growkent'in akıllı müşteri destek asistanısın. Müşterilere doğru, net ve profesyonel yanıtlar veriyorsun. Growkent, hobi bahçecilik ürünleri satmaktadır. Müşterilere sipariş, kargo, iade, ürün kullanımı ve kampanyalar hakkında yardımcı oluyorsun."},
-                {"role": "user", "content": user_message}
-            ]
+                {"role": "user", "content": [{"type": "text", "text": user_message}]}
+            ],
+            response_format={"type": "text"},
+            tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "customer_support",
+                        "strict": True,
+                        "parameters": {
+                            "type": "object",
+                            "required": [
+                                "customer_query",
+                                "customer_id",
+                                "category",
+                                "follow_up_needed",
+                                "timestamp"
+                            ],
+                            "properties": {
+                                "category": {"type": "string", "description": "Belirli bir ürün veya hizmet kategorisi"},
+                                "timestamp": {"type": "string", "description": "Soru veya talebin alındığı zaman damgası"},
+                                "customer_id": {"type": "string", "description": "Müşterinin tanımlayıcı kimliği"},
+                                "customer_query": {"type": "string", "description": "Müşterinin sorduğu soru veya talep"},
+                                "follow_up_needed": {"type": "boolean", "description": "Ek bilgiye ihtiyaç duyulup duyulmadığı"}
+                            },
+                            "additionalProperties": False
+                        },
+                        "description": "Growkent'in akıllı müşteri destek asistanıdır."
+                    }
+                }
+            ],
+            tool_choice={"type": "function", "function": {"name": "customer_support"}},
+            temperature=1,
+            max_completion_tokens=1024,
+            top_p=1,
+            frequency_penalty=0,
+            presence_penalty=0
         )
-        reply = response.choices[0].message.content
-    except Exception as e:
-        reply = f"Bir hata oluştu: {str(e)}"
 
-    return jsonify({"reply": reply})
+        reply = response.choices[0].message.content
+        return jsonify({"reply": reply})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
