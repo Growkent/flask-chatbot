@@ -8,7 +8,7 @@ def home():
     return "Flask uygulaman çalışıyor!"
 
 # OpenAI API Anahtarını Tanımla (LÜTFEN GİZLİ TUT)
-openai.api_key = "sk-...UYYA"
+openai.api_key = "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"
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -40,14 +40,14 @@ def chat():
 
     # Genel OpenAI Yanıtı
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": "Sen, Growkent'in akıllı müşteri destek asistanısın. Müşterilere doğru, net ve profesyonel yanıtlar veriyorsun. Growkent, hobi bahçecilik ürünleri satmaktadır. Müşterilere sipariş, kargo, iade, ürün kullanımı ve kampanyalar hakkında yardımcı oluyorsun."},
                 {"role": "user", "content": user_message}
             ]
         )
-        reply = response["choices"][0]["message"]["content"]
+        reply = response.choices[0].message.content
     except Exception as e:
         reply = f"Bir hata oluştu: {str(e)}"
 
