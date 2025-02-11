@@ -67,7 +67,7 @@ def chat():
         ]
 
         response = openai.ChatCompletion.create(
-            model="gpt-4",  # 
+            model="gpt-4",  # veya kullanılabilir başka bir model
             messages=messages,
             temperature=0.7,
             max_tokens=1000,
@@ -84,4 +84,5 @@ def chat():
 if __name__ == "__main__":
     # Render ortamında PORT değişkeni kullanılır, aksi halde 5000 portu.
     port = int(os.getenv("PORT", 5000))
-    app.run(host=" http://127.0.0.1:5000/chat", port=port)
+    # Host parametresi sadece IP adresi olmalı; URL veya yol içeremez.
+    app.run(host="0.0.0.0", port=port)
