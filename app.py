@@ -1,9 +1,12 @@
-from flask import Flask, request, jsonify
+import os
 from openai import OpenAI
-import datetime
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
-client = OpenAI()
+
+# OpenAI API Anahtarını Çevresel Değişkenden Al
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 
 @app.route("/", methods=["GET"])
 def home():
