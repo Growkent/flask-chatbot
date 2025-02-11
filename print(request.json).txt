@@ -1,0 +1,21 @@
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    print("Gelen istek:", request.json)  # Gelen veriyi terminale yazdır
+    user_input = request.json.get("message", "")
+
+    if not user_input:
+        return jsonify({"error": "Mesaj boş olamaz"}), 400
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": user_input}]
+    )
+
+    return jsonify({"response": response["choices"][0]["message"]["content"]})
+
+if __name__ == '__main__':
+    app.run(debug=True)
