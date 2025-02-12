@@ -85,4 +85,4 @@ if __name__ == "__main__":
     # Render ortamında PORT değişkeni kullanılır, aksi halde 5000 portu.
     port = int(os.getenv("PORT", 5000))
     # Host parametresi sadece IP adresi olmalı; URL veya yol içeremez.
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="127.0.0.1", port=port)
