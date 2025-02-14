@@ -1,4 +1,6 @@
 Flask
+Flask-Session
+redis
 openai==0.28
 waitress
 flask-cors
