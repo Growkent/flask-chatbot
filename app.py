@@ -6,6 +6,7 @@ import openai
 from flask_cors import CORS
 
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
 CORS(app)  # Tüm originlerden gelen istekleri kabul eder
 
 # Ortam değişkeninden OpenAI API anahtarını alıyoruz.
