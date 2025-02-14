@@ -14,7 +14,7 @@ if not openai.api_key:
     raise ValueError("OPENAI_API_KEY ortam değişkeni ayarlanmamış!")
 
 # Redis URL'si: "redis://" ile başlamalıdır.
-redis_url = os.getenv("REDIS_URL", "redis://default:lgjJbHZRxuOLHPSwAJNuy5azGLAJdB2C@redis-11902.c328.europe-west3-1.gce.redns.redis-cloud.com:11902")
+redis_url = os.getenv("REDIS_URL")
 
 # Flask-Session için konfigürasyon
 app.config["SESSION_TYPE"] = "redis"
