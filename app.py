@@ -5,11 +5,10 @@ from flask_session import Session
 import redis
 import openai
 from flask_cors import CORS
-CORS(app, supports_credentials=True)
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
-CORS(app)  # Tüm originlerden gelen istekleri kabul eder
+CORS(app, supports_credentials=True) # Tüm originlerden gelen istekleri kabul eder
 
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=2)
 
