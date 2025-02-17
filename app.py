@@ -9,6 +9,9 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
 CORS(app)  # Tüm originlerden gelen istekleri kabul eder
 
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=2)
+
+
 # Ortam değişkeninden OpenAI API anahtarını alıyoruz.
 openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
@@ -19,7 +22,7 @@ redis_url = os.getenv("REDIS_URL")
 
 # Flask-Session için konfigürasyon
 app.config["SESSION_TYPE"] = "redis"
-app.config["SESSION_PERMANENT"] = False
+app.config["SESSION_PERMANENT"] = True
 app.config["SESSION_USE_SIGNER"] = True
 app.config["SESSION_REDIS"] = redis.from_url(redis_url)
 
