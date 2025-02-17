@@ -130,7 +130,7 @@ def chat():
 
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4",  # veya kullanılabilir başka bir model
+            model="gpt-4o",  
             messages=messages,
             temperature=0.7,
             max_tokens=1000,
