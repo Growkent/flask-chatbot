@@ -26,7 +26,6 @@ app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_PERMANENT"] = True
 app.config["SESSION_USE_SIGNER"] = True
 app.config["SESSION_REDIS"] = redis.from_url(redis_url)
-
 # Flask-Session'ı başlat
 Session(app)
 
@@ -118,6 +117,7 @@ Müşteri bir soru sorduğunda önceki sorulmuş sorularla beraber değerlendir 
 """
 @app.route("/chat", methods=["POST"])
 def chat():
+    session.permanent = True
     data = request.get_json()
     user_message = data.get("message")
     if not user_message:
