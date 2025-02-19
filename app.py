@@ -22,6 +22,7 @@ if not openai.api_key:
 redis_url = os.getenv("REDIS_URL")
 
 # Flask-Session için konfigürasyon
+app.config["SESSION_COOKIE_NAME"] = "my_custom_session"
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_PERMANENT"] = True
 app.config["SESSION_USE_SIGNER"] = True
