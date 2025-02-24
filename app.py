@@ -1,3 +1,4 @@
+import time
 import os
 from datetime import timedelta
 from flask import Flask, request, jsonify, session
@@ -171,7 +172,7 @@ def chat():
         # ref = db.reference('conversations')
         # ref.push({
         #     'conversation': conversation_history,
-        #     'timestamp': os.time()  # ya da uygun zaman damgası
+        #     'timestamp': int(time.time())  # ya da uygun zaman damgası
         # })
 
         return jsonify({"message": bot_message})
