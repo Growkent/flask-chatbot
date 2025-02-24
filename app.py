@@ -1,5 +1,6 @@
 import time
 import os
+import uuid
 from datetime import timedelta
 from flask import Flask, request, jsonify, session
 from flask_session import Session
@@ -86,9 +87,14 @@ def chat():
         conversation_history.append({"role": "assistant", "content": bot_message})
         session["conversation_history"] = conversation_history  # Session güncellemesi
 
-        # Firebase'e sohbet kaydı ekleme
-        ref = db.reference('conversations')
-        ref.push({
+        # Kullanıcıya özel conversation_id oluşturma (eğer yoksa)
+        if "conversation_id" not in session:
+            session["conversation_id"] = str(uuid.uuid4())
+        conversation_id = session["conversation_id"]
+
+        # Firebase'de tek bir conversation altında verileri güncelleme
+        ref = db.reference('conversations').child(conversation_id)
+        ref.set({
             'conversation': conversation_history,
             'timestamp': int(time.time())
         })
@@ -100,4 +106,3 @@ def chat():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
