@@ -6,12 +6,29 @@ import redis
 import openai
 from flask_cors import CORS
 
+# --- Firebase Bağlantısı için Eklemeler Başlangıç ---
+import firebase_admin
+from firebase_admin import credentials, db
+
+# Ortam değişkenlerinden gerekli bilgileri alıyoruz:
+service_account_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+firebase_db_url = os.environ.get('FIREBASE_DB_URL')
+
+if not service_account_path or not firebase_db_url:
+    raise ValueError("GOOGLE_APPLICATION_CREDENTIALS veya FIREBASE_DB_URL ortam değişkeni ayarlanmamış!")
+
+# Firebase Admin SDK'yı, hizmet hesabı dosyası ve veritabanı URL’i ile başlatıyoruz.
+cred = credentials.Certificate(service_account_path)
+firebase_admin.initialize_app(cred, {
+    'databaseURL': firebase_db_url
+})
+# --- Firebase Bağlantısı için Eklemeler Bitiş ---
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
-CORS(app, supports_credentials=True) # Tüm originlerden gelen istekleri kabul eder
+CORS(app, supports_credentials=True)  # Tüm originlerden gelen istekleri kabul eder
 
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=2)
-
 
 # Ortam değişkeninden OpenAI API anahtarını alıyoruz.
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -93,14 +110,14 @@ Kargonuzu eksik olarak teslim aldıysanız öncelikle teslimat şubenizle ileti�
 Teslim aldığım kargo/ürün hasarlı çıktı. Nasıl yardımcı olabilirsiniz?;
 Ürünlerinizi teslim aldığınız sırada eğer ürünlerinizde hasar varsa bu durumla ilgili kargo görevlisine tutanak tutturmalısınız. Sonrasında ise kargo@growkent.com e-posta adresimizle veya 0212 274 1034 numaralı hattımızı arayıp Kargo Birimi’mizle iletişime geçerek durumla ilgili yardım isteyebilirsiniz. Müşterilerimizin bu gibi durumlarda mağdur olmamaları için her zaman elimizden geleni yapmaktayız.
 Oluşturmuş olduğum siparişi kargoya verilmeden nasıl iptal edebilirim?;
-Siparişinizi oluşturduğunuz hesaba giriş yapıp, "Siparişlerim” bölümüne tıklayarak sipariş iptal talebinizi oluşturabilirsiniz. İptal işleminizin onaylanması için 0212 274 1034 numaralı hattımızı arayıp Kargo Birimimize bağlanarak bilgi vermeniz gerekmektedir.
+Siparişinizi oluşturduğunuz hesaba giriş yapıp, "Siparişlerim” bölümüne tıklayarak sipariş iptal talebinizi oluşturabilirsiniz. İptal işlemlerinin yoğun zamanlarda gözden kaçabileceğinden, işlem gerçekleştirildiği anda şubelerimizi arayarak bilgi verilmesi, veya caglayanmuhasebe@growkent.com adresine iptal işleminizi içeren bir mail atılması gereklidir.
 Teslim aldığım ürünü kaç gün içerisinde iade edebilirim?;
 Satın almış olduğunuz ürünü faturanız ile beraber orijinal ambalajını açmadan, kullanmadan ve tekrar satılabilirliği kaybedilmemiş olarak teslim tarihinden itibaren ondört (14) günlük süre içinde kargo ücretini ödemek kaydı ile iade edebilir, farklı bir ürünle değişim yapabilir, veya adınıza kredi açtırarak sonraki alışverişlerinizde toplam tutardan düşürebilirsiniz. Faturasız ürünlerin iadesi alınmayacak ve bedeli iade edilmeyecektir.
 İade şartları nelerdir?
 Satın almış olduğunuz ürünü faturanız ile beraber orijinal ambalajını açmadan, kullanmadan ve tekrar satılabilirliği kaybedilmeden teslim tarihinden itibaren ondört (14) günlük süre içinde kargo ücretini ödemek kaydı ile iade edebilir, farklı bir ürünle değişim yapabilir, veya adınıza kredi açtırarak sonraki alışverişlerinizde tutardan düşürebilirsiniz.
 Faturasız ürünlerin iadesi alınmayacak ve bedeli iade edilmeyecektir.
-Sipariş veya ürün iptallerinizi ise mümkünse aynı gün içerisinde ürünleriniz kargoya verilmeden, veya sonrasında 'Hesabım' menüsündeki 'Siparişlerim' kısmından gerçekleştirebilirsiniz. İptal işlemleri yoğun zamanlarda gözden kaçabileceğinden, işlem gerçekleştirildiği anda şubelerimizi arayarak bilgi verilmesi, veya caglayanmuhasebe@growkent.com adresine iptal işleminizi içeren bir mail atılması gereklidir.
-Not: "Bitki Besinleri" kategorisinde bulunan her türlü katı-sıvı ürün ve HPS-MH lambalar; içeriği değiştirilebilir ürünler olduğundan şirket politikası gereği iade kapsamı dışındadır. S&P havalandırma fanlarının da iadesi veya değişimi yapılamamaktadır.
+Sipariş veya ürün iptallerinizi ise mümkünse aynı gün içerisinde ürünleriniz kargoya verilmeden, veya sonrasında 'Hesabım' menüsündeki 'Siparişlerim' kısmından gerçekleştirebilirsiniz. 
+Not: "Bitki Besinleri" kategorisinde bulunan her türlü katı-sıvı ürün ve HPS-MH lambalar; içeriği değiştirilebilir ürünler olduğundan şirket politikası gereği iade kapsamı dışındadır. 
 Mağaza mesai saatleri; hafta içi: 09:30-18:00 cumartesi 11:00-17:00, pazar günü, dini bayramlar ve 1 mayısta kapalı.
 Whatsapp iletişim numarası; +90 533 312 61 14
 Sabit telefon hattı; 0212 274 10 34
@@ -113,9 +130,11 @@ Mağazalarımız;
 Growkent Bostancı, Growkent Avcılar, Growkent Kadıköy, Growkent Çağlayan olarak tane mağazamız bulunuyor. Hepsinin çalışma saatleri aynı hafta içi: 09:30-18:00 cumartesi 11:00-17:00, pazar günü, dini bayramlar ve 1 mayısta kapalı. 
 Müşteri mağaza konumunu soruyorsa ''https://www.growkent.com/magazalar'' bu linki iletebilirsin. 
 Mağazalarımız ve websitemiz dışında Hepsiburada, Trendyol ve N11 gibi pazaryerlerinde de ürün satışımız mevcuttur. İstediğiniz ürün websitemizde olup bu platformlarda yok ise telebiniz doğrultusunda ekleyebiliriz.
+Tohum satışımız yoktur.
 Müşteri bir soru sorduğunda önceki sorulmuş sorularla beraber değerlendir ve konuya göre cevap ver. Cevapların açıklayıcı ve betimleyici olmalıdır.
 İş başvurusu yapmak için destek@growkent.com mail adresine cv yollayabilirler.
 """
+
 @app.route("/chat", methods=["POST"])
 def chat():
     session.permanent = True
@@ -135,7 +154,7 @@ def chat():
 
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4o-2024-11-20",  
+            model="gpt-4o-2024-11-20",
             messages=messages,
             temperature=0.7,
             max_tokens=1000,
@@ -147,6 +166,14 @@ def chat():
         bot_message = response.choices[0].message.get("content", "").strip()
         conversation_history.append({"role": "assistant", "content": bot_message})
         session["conversation_history"] = conversation_history  # Session güncellemesi
+
+        # Örnek: Firebase'e sohbet kaydı ekleme (opsiyonel)
+        # ref = db.reference('conversations')
+        # ref.push({
+        #     'conversation': conversation_history,
+        #     'timestamp': os.time()  # ya da uygun zaman damgası
+        # })
+
         return jsonify({"message": bot_message})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

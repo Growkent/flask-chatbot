@@ -1,5 +1,6 @@
 Flask
 Flask-Session
+firebase-admin
 redis
 openai==0.28
 waitress
