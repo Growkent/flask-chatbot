@@ -1,10 +1,7 @@
 import time
 import os
 import uuid
-from datetime import timedelta
-from flask import Flask, request, jsonify, session
-from flask_session import Session
-import redis
+from flask import Flask, request, jsonify
 import openai
 from flask_cors import CORS
 import firebase_admin
@@ -24,32 +21,15 @@ firebase_admin.initialize_app(cred, {'databaseURL': firebase_db_url})
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
 
-CORS(app,
-     supports_credentials=True,
-     origins=["https://www.growkent.com"],
-     methods=["GET", "POST", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
-)
-
-# Session ve Cookie ayarları
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=2)
-app.config["SESSION_COOKIE_NAME"] = "my_custom_session"
-app.config["SESSION_TYPE"] = "redis"
-app.config["SESSION_PERMANENT"] = True
-app.config["SESSION_USE_SIGNER"] = True
-app.config["SESSION_REDIS"] = redis.from_url(os.getenv("REDIS_URL"))
-app.config["SESSION_COOKIE_DOMAIN"] = ".growkent.com"
-app.config["SESSION_COOKIE_SAMESITE"] = "None"
-app.config["SESSION_COOKIE_SECURE"] = True
-
-Session(app)
+# CORS ayarları
+CORS(app, origins="*")
 
 # OpenAI anahtarı
 openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY ortam değişkeni ayarlanmamış!")
 
-# Sistem promptu burada tanımlanmalı
+# Sistem promptu (Önceki uzun prompt'u buraya kopyala)
 system_prompt = """
 Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
 
@@ -134,22 +114,24 @@ Müşteri mağaza konumunu soruyorsa ''https://www.growkent.com/magazalar'' bu l
 Mağazalarımız ve websitemiz dışında Hepsiburada, Trendyol ve N11 gibi pazaryerlerinde de ürün satışımız mevcuttur. İstediğiniz ürün websitemizde olup bu platformlarda yok ise telebiniz doğrultusunda ekleyebiliriz.
 Tohum satışımız yoktur.
 Müşteri bir soru sorduğunda önceki sorulmuş sorularla beraber değerlendir ve konuya göre cevap ver. Cevapların açıklayıcı ve betimleyici olmalıdır.
-İş başvurusu yapmak için destek@growkent.com mail adresine cv yollayabilirler.
-"""
+İş başvurusu yapmak için destek@growkent.com mail adresine cv yollayabilirler."""
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    session.permanent = True
     data = request.get_json()
     user_message = data.get("message")
+    conversation_id = data.get("conversation_id")
 
     if not user_message:
         return jsonify({"error": "Mesaj bulunamadı"}), 400
 
-    if "conversation_history" not in session:
-        session["conversation_history"] = []
+    if not conversation_id:
+        conversation_id = str(uuid.uuid4())
+        conversation_history = []
+    else:
+        ref = db.reference('conversations').child(conversation_id).get()
+        conversation_history = ref.get('conversation', []) if ref else []
 
-    conversation_history = session["conversation_history"]
     conversation_history.append({"role": "user", "content": user_message})
 
     messages = [{"role": "system", "content": system_prompt}] + conversation_history
@@ -159,20 +141,11 @@ def chat():
             model="gpt-4o-2024-11-20",
             messages=messages,
             temperature=0.7,
-            max_tokens=1000,
-            top_p=1,
-            frequency_penalty=0,
-            presence_penalty=0
+            max_tokens=1000
         )
 
         bot_message = response.choices[0].message.get("content", "").strip()
         conversation_history.append({"role": "assistant", "content": bot_message})
-        session["conversation_history"] = conversation_history
-
-        if "conversation_id" not in session:
-            session["conversation_id"] = str(uuid.uuid4())
-
-        conversation_id = session["conversation_id"]
 
         ref = db.reference('conversations').child(conversation_id)
         ref.set({
@@ -180,9 +153,7 @@ def chat():
             'timestamp': int(time.time())
         })
 
-        app.logger.info(f"Session after processing: {session}")
-
-        return jsonify({"message": bot_message})
+        return jsonify({"message": bot_message, "conversation_id": conversation_id})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
