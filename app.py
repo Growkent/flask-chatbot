@@ -1,43 +1,57 @@
 import time
 import os
 import uuid
-from flask import Flask, request, jsonify
+from datetime import timedelta
+from flask import Flask, request, jsonify, session
+from flask_session import Session
+import redis
 import openai
 from flask_cors import CORS
 import firebase_admin
 from firebase_admin import credentials, db
 
-# Firebase bağlantısı
-service_account_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-firebase_db_url = os.environ.get('FIREBASE_DB_URL')
-
-if not service_account_path or not firebase_db_url:
-    raise ValueError("GOOGLE_APPLICATION_CREDENTIALS veya FIREBASE_DB_URL ortam değişkeni ayarlanmamış!")
-
-cred = credentials.Certificate(service_account_path)
-firebase_admin.initialize_app(cred, {'databaseURL': firebase_db_url})
+# Firebase Bağlantısı
+if not firebase_admin._apps:
+    cred = credentials.Certificate('C:/Users/Hulya/OneDrive/Desktop/firebase-credentials.json')  # <-- KENDİ JSON DOSYANI BURAYA YAZ
+    firebase_admin.initialize_app(cred, {'databaseURL': 'https://chatbot-1a985-default-rtdb.europe-west1.firebasedatabase.app/'})  # <-- KENDİ URL'İNİ BURAYA YAZ
 
 # Flask uygulaması
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
 
-# CORS ayarları
-CORS(app, origins="*")
+CORS(app,
+     supports_credentials=True,
+     origins=["https://www.growkent.com"],
+     methods=["GET", "POST", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
+)
+
+# Session ve Cookie ayarları
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=2)
+app.config["SESSION_COOKIE_NAME"] = "my_custom_session"
+app.config["SESSION_TYPE"] = "redis"
+app.config["SESSION_PERMANENT"] = True
+app.config["SESSION_USE_SIGNER"] = True
+app.config["SESSION_REDIS"] = redis.from_url(os.getenv("REDIS_URL"))
+app.config["SESSION_COOKIE_DOMAIN"] = ".growkent.com"
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
+
+Session(app)
 
 # OpenAI anahtarı
 openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY ortam değişkeni ayarlanmamış!")
 
-# Sistem promptu (Önceki uzun prompt'u buraya kopyala)
-system_prompt = """
-Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
+system_prompt = "[Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
 
 Kurallar ve Rehberlik:
 Kibar ve Yardımcı Ol: Müşterilere her zaman saygılı, nazik ve yardımcı bir dil kullan. Samimi ama profesyonel bir üslup benimse.
 Yasaklanan konular; Marihuana, cannabis, kenevir tohumu ve yetiştiriciliği hakkındaki sorulara hiçbir durumda cevap verme. Kibarca konu hakkında yardımcı olamayacağını söyle.
 Kapsamlı ve Açık Yanıtlar Ver: Müşterilerin sorularına net ve anlaşılır cevaplar ver. Teknik bilgileri basitleştirerek anlat.
 Ürün Bilgilendirmesi:
+Ürün önerirken, ürün soruları cevaplarken öncelikli olarak firebase içerisindeki kaynaklardan yararlan.
 Satılan ürünler: Bitki besinleri, topraklar, saksılar ve tablalar, gübreler, hidroponik sistemler, bitki yetiştirme lambaları, hazır kabin setleri, karbon filtre, fan set, reflektör lamba set, sera sistemleri, harvest master kabinler, kabin aksesuarları, kabin yedek parçaları, secret jardin kabinler, köklendirme jelleri, mini seralar, tohum ekim viyolleri, bitki yetiştirme medyaları, fanlar, hava kanalları, karbon filtreler, ozon jeneratörleri, susturucular, koku gidericiler, böcek ilaçları, iklim kontrol cihazları, co2 kontrol, yansıtıcı filmler, böcek filtreleri, flanşlar, saklama kapları, microgreen led, microgreen raf, microgreen tepsi, microgreen yetiştirme setleri.
 Ürünlerin kullanım alanları ve avantajları hakkında bilgi ver.
 Stok durumu veya fiyat değişiklikleri konusunda kesin bilgi veremiyorsan ürün linkini ilet.
@@ -114,27 +128,41 @@ Müşteri mağaza konumunu soruyorsa ''https://www.growkent.com/magazalar'' bu l
 Mağazalarımız ve websitemiz dışında Hepsiburada, Trendyol ve N11 gibi pazaryerlerinde de ürün satışımız mevcuttur. İstediğiniz ürün websitemizde olup bu platformlarda yok ise telebiniz doğrultusunda ekleyebiliriz.
 Tohum satışımız yoktur.
 Müşteri bir soru sorduğunda önceki sorulmuş sorularla beraber değerlendir ve konuya göre cevap ver. Cevapların açıklayıcı ve betimleyici olmalıdır.
-İş başvurusu yapmak için destek@growkent.com mail adresine cv yollayabilirler."""
+İş başvurusu yapmak için destek@growkent.com mail adresine cv yollayabilirler.
+]"  # <-- MEVCUT SYSTEM PROMPTUNU BURAYA KOPYALA
 
 @app.route("/chat", methods=["POST"])
 def chat():
+    session.permanent = True
     data = request.get_json()
     user_message = data.get("message")
-    conversation_id = data.get("conversation_id")
 
     if not user_message:
         return jsonify({"error": "Mesaj bulunamadı"}), 400
 
-    if not conversation_id:
-        conversation_id = str(uuid.uuid4())
-        conversation_history = []
-    else:
-        ref = db.reference('conversations').child(conversation_id).get()
-        conversation_history = ref.get('conversation', []) if ref else []
+    if "conversation_history" not in session:
+        session["conversation_history"] = []
 
+    conversation_history = session["conversation_history"]
     conversation_history.append({"role": "user", "content": user_message})
 
-    messages = [{"role": "system", "content": system_prompt}] + conversation_history
+    # Firebase'den ürün bilgilerini çek
+    products_ref = db.reference('/products')
+    products = products_ref.get()
+
+    # İlk 20 ürünü prompta ekle
+    products_info = "\n".join([
+        f"{p['name']} - {p.get('price', 'Fiyat bilgisi yok')}" for p in products[:20]
+    ])
+
+    dynamic_system_prompt = f"""
+    İşte stoktaki bazı ürünlerimiz ve fiyat bilgileri:
+    {products_info}
+
+    Müşterilere yardımcı olurken yukarıdaki ürün bilgilerini kullan. Fiyat ve stok bilgilerini özellikle sorarlarsa buradan cevapla.
+    """
+
+    messages = [{"role": "system", "content": system_prompt + dynamic_system_prompt}] + conversation_history
 
     try:
         response = openai.ChatCompletion.create(
@@ -146,6 +174,12 @@ def chat():
 
         bot_message = response.choices[0].message.get("content", "").strip()
         conversation_history.append({"role": "assistant", "content": bot_message})
+        session["conversation_history"] = conversation_history
+
+        if "conversation_id" not in session:
+            session["conversation_id"] = str(uuid.uuid4())
+
+        conversation_id = session["conversation_id"]
 
         ref = db.reference('conversations').child(conversation_id)
         ref.set({
@@ -153,7 +187,7 @@ def chat():
             'timestamp': int(time.time())
         })
 
-        return jsonify({"message": bot_message, "conversation_id": conversation_id})
+        return jsonify({"message": bot_message})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
