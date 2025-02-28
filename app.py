@@ -12,8 +12,9 @@ from firebase_admin import credentials, db
 
 # Firebase Bağlantısı
 if not firebase_admin._apps:
-    cred = credentials.Certificate('firebase-credentials.json')  # <-- KENDİ JSON DOSYANI BURAYA YAZ
-    firebase_admin.initialize_app(cred, {'databaseURL': 'https://chatbot-1a985-default-rtdb.europe-west1.firebasedatabase.app/'})  # <-- KENDİ URL'İNİ BURAYA YAZ
+    firebase_credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+cred = credentials.Certificate(json.loads(firebase_credentials_json))
+firebase_admin.initialize_app(cred, {'databaseURL': os.getenv("FIREBASE_DB_URL")})
 # Flask uygulaması
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
