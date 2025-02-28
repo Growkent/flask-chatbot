@@ -152,7 +152,7 @@ def chat():
 
     # İlk 20 ürünü prompta ekle
     products_info = "\n".join([
-        f"{p['name']} - {p.get('price', 'Fiyat bilgisi yok')}" for p in products[:20]
+        f"{p['name']} - {p.get('price', 'Fiyat bilgisi yok')}" for p in products
     ])
 
     dynamic_system_prompt = f"""
