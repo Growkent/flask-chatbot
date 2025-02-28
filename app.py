@@ -24,8 +24,12 @@ firebase_admin.initialize_app(cred, {'databaseURL': firebase_db_url})
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
 
-# CORS ayarları
-CORS(app, supports_credentials=True, origins=["https://growkent.com"])
+CORS(app,
+     supports_credentials=True,
+     origins=["https://www.growkent.com"],
+     methods=["GET", "POST", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
+)
 
 # Session ve Cookie ayarları
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=2)
