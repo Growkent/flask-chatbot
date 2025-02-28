@@ -11,11 +11,12 @@ from flask_cors import CORS
 import firebase_admin
 from firebase_admin import credentials, db
 
-# Firebase Bağlantısı
+# Firebase Bağlantısı (conversations için)
 if not firebase_admin._apps:
     firebase_credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-cred = credentials.Certificate(json.loads(firebase_credentials_json))
-firebase_admin.initialize_app(cred, {'databaseURL': os.getenv("FIREBASE_DB_URL")})
+    cred = credentials.Certificate(json.loads(firebase_credentials_json))
+    firebase_admin.initialize_app(cred, {'databaseURL': os.getenv("FIREBASE_DB_URL")})
+
 # Flask uygulaması
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
@@ -51,7 +52,6 @@ Kibar ve Yardımcı Ol: Müşterilere her zaman saygılı, nazik ve yardımcı b
 Yasaklanan konular; Marihuana, cannabis, kenevir tohumu ve yetiştiriciliği hakkındaki sorulara hiçbir durumda cevap verme. Kibarca konu hakkında yardımcı olamayacağını söyle.
 Kapsamlı ve Açık Yanıtlar Ver: Müşterilerin sorularına net ve anlaşılır cevaplar ver. Teknik bilgileri basitleştirerek anlat.
 Ürün Bilgilendirmesi:
-Ürün önerirken, ürün soruları cevaplarken öncelikli olarak firebase içerisindeki kaynaklardan yararlan.
 Satılan ürünler: Bitki besinleri, topraklar, saksılar ve tablalar, gübreler, hidroponik sistemler, bitki yetiştirme lambaları, hazır kabin setleri, karbon filtre, fan set, reflektör lamba set, sera sistemleri, harvest master kabinler, kabin aksesuarları, kabin yedek parçaları, secret jardin kabinler, köklendirme jelleri, mini seralar, tohum ekim viyolleri, bitki yetiştirme medyaları, fanlar, hava kanalları, karbon filtreler, ozon jeneratörleri, susturucular, koku gidericiler, böcek ilaçları, iklim kontrol cihazları, co2 kontrol, yansıtıcı filmler, böcek filtreleri, flanşlar, saklama kapları, microgreen led, microgreen raf, microgreen tepsi, microgreen yetiştirme setleri.
 Ürünlerin kullanım alanları ve avantajları hakkında bilgi ver.
 Stok durumu veya fiyat değişiklikleri konusunda kesin bilgi veremiyorsan ürün linkini ilet.
@@ -129,7 +129,7 @@ Mağazalarımız ve websitemiz dışında Hepsiburada, Trendyol ve N11 gibi paza
 Tohum satışımız yoktur.
 Müşteri bir soru sorduğunda önceki sorulmuş sorularla beraber değerlendir ve konuya göre cevap ver. Cevapların açıklayıcı ve betimleyici olmalıdır.
 İş başvurusu yapmak için destek@growkent.com mail adresine cv yollayabilirler.
-"""  # <-- MEVCUT SYSTEM PROMPTUNU BURAYA KOPYALA
+"""
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -146,23 +146,7 @@ def chat():
     conversation_history = session["conversation_history"]
     conversation_history.append({"role": "user", "content": user_message})
 
-    # Firebase'den ürün bilgilerini çek
-    products_ref = db.reference('/products')
-    products = products_ref.get()
-
-    # İlk 20 ürünü prompta ekle
-    products_info = "\n".join([
-        f"{p['name']} - {p.get('price', 'Fiyat bilgisi yok')}" for p in products
-    ])
-
-    dynamic_system_prompt = f"""
-    İşte stoktaki bazı ürünlerimiz ve fiyat bilgileri:
-    {products_info}
-
-    Müşterilere yardımcı olurken yukarıdaki ürün bilgilerini kullan. Fiyat ve stok bilgilerini özellikle sorarlarsa buradan cevapla.
-    """
-
-    messages = [{"role": "system", "content": system_prompt + dynamic_system_prompt}] + conversation_history
+    messages = [{"role": "system", "content": system_prompt}] + conversation_history
 
     try:
         response = openai.ChatCompletion.create(
