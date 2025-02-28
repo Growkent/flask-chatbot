@@ -149,7 +149,7 @@ def chat():
         return jsonify({"error": "Mesaj bulunamadı"}), 400
 
     # Eğer session'da "conversation_history" yoksa, initialize et.
-    if "conversation_history" not in session:
+   if "conversation_history" not in session:
         session["conversation_history"] = []
 
     conversation_history = session["conversation_history"]
