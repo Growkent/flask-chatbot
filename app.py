@@ -27,13 +27,16 @@ app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
 # CORS ayarları
 CORS(app, supports_credentials=True, origins=["https://growkent.com"])
 
-# Session ayarları
+# Session ve Cookie ayarları
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=2)
 app.config["SESSION_COOKIE_NAME"] = "my_custom_session"
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_PERMANENT"] = True
 app.config["SESSION_USE_SIGNER"] = True
 app.config["SESSION_REDIS"] = redis.from_url(os.getenv("REDIS_URL"))
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_SECURE"] = True
+
 Session(app)
 
 # OpenAI anahtarı
@@ -42,7 +45,8 @@ if not openai.api_key:
     raise ValueError("OPENAI_API_KEY ortam değişkeni ayarlanmamış!")
 
 # Sistem promptu burada tanımlanmalı
-system_prompt = """Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
+system_prompt = """
+Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
 
 Kurallar ve Rehberlik:
 Kibar ve Yardımcı Ol: Müşterilere her zaman saygılı, nazik ve yardımcı bir dil kullan. Samimi ama profesyonel bir üslup benimse.
