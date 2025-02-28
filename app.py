@@ -26,7 +26,7 @@ app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
 
 CORS(app,
      supports_credentials=True,
-     origins=[".growkent.com"],
+     origins=["https://www.growkent.com"],
      methods=["GET", "POST", "OPTIONS"],
      allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
 )
