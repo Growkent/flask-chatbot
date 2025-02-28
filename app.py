@@ -43,7 +43,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY ortam değişkeni ayarlanmamış!")
 
-system_prompt = "[Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
+system_prompt = """Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
 Kurallar ve Rehberlik:
 Kibar ve Yardımcı Ol: Müşterilere her zaman saygılı, nazik ve yardımcı bir dil kullan. Samimi ama profesyonel bir üslup benimse.
 Yasaklanan konular; Marihuana, cannabis, kenevir tohumu ve yetiştiriciliği hakkındaki sorulara hiçbir durumda cevap verme. Kibarca konu hakkında yardımcı olamayacağını söyle.
@@ -127,7 +127,7 @@ Mağazalarımız ve websitemiz dışında Hepsiburada, Trendyol ve N11 gibi paza
 Tohum satışımız yoktur.
 Müşteri bir soru sorduğunda önceki sorulmuş sorularla beraber değerlendir ve konuya göre cevap ver. Cevapların açıklayıcı ve betimleyici olmalıdır.
 İş başvurusu yapmak için destek@growkent.com mail adresine cv yollayabilirler.
-]"  # <-- MEVCUT SYSTEM PROMPTUNU BURAYA KOPYALA
+"""  # <-- MEVCUT SYSTEM PROMPTUNU BURAYA KOPYALA
 
 @app.route("/chat", methods=["POST"])
 def chat():
