@@ -12,7 +12,7 @@ from firebase_admin import credentials, db
 
 # Firebase Bağlantısı
 if not firebase_admin._apps:
-    cred = credentials.Certificate('C:/Users/Hulya/OneDrive/Desktop/firebase-credentials.json')  # <-- KENDİ JSON DOSYANI BURAYA YAZ
+    cred = credentials.Certificate('firebase-credentials.json')  # <-- KENDİ JSON DOSYANI BURAYA YAZ
     firebase_admin.initialize_app(cred, {'databaseURL': 'https://chatbot-1a985-default-rtdb.europe-west1.firebasedatabase.app/'})  # <-- KENDİ URL'İNİ BURAYA YAZ
 # Flask uygulaması
 app = Flask(__name__)
