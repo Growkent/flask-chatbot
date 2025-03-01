@@ -3,7 +3,7 @@ import os
 import uuid
 import json
 from datetime import timedelta
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify
 from flask_session import Session
 import redis
 import openai
@@ -11,7 +11,7 @@ from flask_cors import CORS
 import firebase_admin
 from firebase_admin import credentials, db
 
-# Firebase Bağlantısı (conversations için)
+# Firebase bağlantısı
 if not firebase_admin._apps:
     firebase_credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
     cred = credentials.Certificate(json.loads(firebase_credentials_json))
@@ -25,21 +25,8 @@ CORS(app,
      supports_credentials=True,
      origins=["https://www.growkent.com"],
      methods=["GET", "POST", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Conversation-Id"]
 )
-
-# Session ve Cookie ayarları
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=2)
-app.config["SESSION_COOKIE_NAME"] = "my_custom_session"
-app.config["SESSION_TYPE"] = "redis"
-app.config["SESSION_PERMANENT"] = True
-app.config["SESSION_USE_SIGNER"] = True
-app.config["SESSION_REDIS"] = redis.from_url(os.getenv("REDIS_URL"))
-app.config["SESSION_COOKIE_DOMAIN"] = ".growkent.com"
-app.config["SESSION_COOKIE_SAMESITE"] = "None"
-app.config["SESSION_COOKIE_SECURE"] = True
-
-Session(app)
 
 # OpenAI anahtarı
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -133,17 +120,24 @@ Müşteri bir soru sorduğunda önceki sorulmuş sorularla beraber değerlendir 
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    session.permanent = True
     data = request.get_json()
     user_message = data.get("message")
 
     if not user_message:
         return jsonify({"error": "Mesaj bulunamadı"}), 400
 
-    if "conversation_history" not in session:
-        session["conversation_history"] = []
+    conversation_id = request.headers.get('X-Conversation-Id')
+    if not conversation_id:
+        conversation_id = str(uuid.uuid4())
 
-    conversation_history = session["conversation_history"]
+    ref = db.reference('conversations').child(conversation_id)
+    conversation_data = ref.get()
+
+    if conversation_data and 'conversation' in conversation_data:
+        conversation_history = conversation_data['conversation']
+    else:
+        conversation_history = []
+
     conversation_history.append({"role": "user", "content": user_message})
 
     messages = [{"role": "system", "content": system_prompt}] + conversation_history
@@ -158,14 +152,7 @@ def chat():
 
         bot_message = response.choices[0].message.get("content", "").strip()
         conversation_history.append({"role": "assistant", "content": bot_message})
-        session["conversation_history"] = conversation_history
 
-        if "conversation_id" not in session:
-            session["conversation_id"] = str(uuid.uuid4())
-
-        conversation_id = session["conversation_id"]
-
-        ref = db.reference('conversations').child(conversation_id)
         ref.set({
             'conversation': conversation_history,
             'timestamp': int(time.time())
