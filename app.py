@@ -36,7 +36,7 @@ if not openai.api_key:
     raise ValueError("OPENAI_API_KEY ortam değişkeni ayarlanmamış!")
 
 # Embedding dosyası indirme fonksiyonu
-EMBEDDING_URL = "https://raw.githubusercontent.com/Growkent/flask-chatbot/refs/heads/main/urunler_embedding.json"
+EMBEDDING_URL = "https://github.com/Growkent/flask-chatbot/releases/download/urunler/urunler_embedding.json"
 local_embedding_path = 'data/urunler_embedding.json'
 
 def embedding_dosyasini_indir():
