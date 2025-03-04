@@ -40,6 +40,7 @@ EMBEDDING_URL = "https://raw.githubusercontent.com/Growkent/flask-chatbot/refs/h
 local_embedding_path = 'data/urunler_embedding.json'
 
 def embedding_dosyasini_indir():
+    os.makedirs('data', exist_ok=True)
     if not os.path.exists(local_embedding_path):
         print("Embedding dosyası indiriliyor...")
         response = requests.get(EMBEDDING_URL)
