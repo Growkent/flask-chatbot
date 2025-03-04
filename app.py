@@ -2,6 +2,7 @@ import time
 import os
 import uuid
 import json
+import requests
 from datetime import timedelta
 from flask import Flask, request, jsonify
 from flask_session import Session
@@ -34,10 +35,27 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY ortam değişkeni ayarlanmamış!")
 
+# Embedding dosyası indirme fonksiyonu
+EMBEDDING_URL = "https://raw.githubusercontent.com/Growkent/flask-chatbot/refs/heads/main/urunler_embedding.json"
+local_embedding_path = 'data/urunler_embedding.json'
+
+def embedding_dosyasini_indir():
+    if not os.path.exists(local_embedding_path):
+        print("Embedding dosyası indiriliyor...")
+        response = requests.get(EMBEDDING_URL)
+        with open(local_embedding_path, 'wb') as f:
+            f.write(response.content)
+        print("Embedding dosyası indirildi.")
+    else:
+        print("Embedding dosyası zaten mevcut.")
+
+embedding_dosyasini_indir()
+
 # Ürün embeddinglerini yükle
-with open('data/urunler_embedding.json', 'r', encoding='utf-8') as f:
+with open(local_embedding_path, 'r', encoding='utf-8') as f:
     urunler = json.load(f)
 
+# Embedding eşleştirme fonksiyonları
 def cosine_similarity(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
@@ -51,9 +69,7 @@ def urun_bul_embedding(sorgu):
     best_match_index = np.argmax(similarities)
     return urunler[best_match_index]
 
-# Mevcut system_prompt değişkeni korunmuştur
-system_prompt = """"
-Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
+system_prompt = """Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
 Kurallar ve Rehberlik:
 Kibar ve Yardımcı Ol: Müşterilere her zaman saygılı, nazik ve yardımcı bir dil kullan. Samimi ama profesyonel bir üslup benimse.
 Yasaklanan konular; Marihuana, cannabis, kenevir tohumu ve yetiştiriciliği hakkındaki sorulara hiçbir durumda cevap verme. Kibarca konu hakkında yardımcı olamayacağını söyle.
@@ -149,15 +165,13 @@ def chat():
     conversation_id = request.headers.get('X-Conversation-Id', str(uuid.uuid4()))
 
     ref = db.reference(f"conversations/{conversation_id}")
-    conversation_history = ref.get().get('conversation', []) if ref.get() else []
+    conversation_data = ref.get()
+    conversation_history = conversation_data.get('conversation', []) if conversation_data else []
 
-    # Kullanıcı mesajını ekle
     conversation_history = conversation_history + [{"role": "user", "content": user_message}]
 
-    # En alakalı ürünü embedding kullanarak bul
     best_urun = urun_bul_embedding(user_message)
 
-    # ChatGPT mesajlarını hazırla
     messages = [{"role": "system", "content": system_prompt}] + conversation_history
     messages.append({
         "role": "user",
@@ -168,8 +182,9 @@ def chat():
         response = openai.ChatCompletion.create(model="gpt-4o", messages=messages)
         bot_message = response.choices[0].message.content.strip()
 
-        # Sohbet geçmişini güncelle ve kaydet
+        conversation_history.append({"role": "user", "content": user_message})
         conversation_history.append({"role": "assistant", "content": bot_message})
+
         ref.set({
             'conversation': conversation_history,
             'timestamp': int(time.time())
@@ -181,4 +196,5 @@ def chat():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run()
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
