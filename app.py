@@ -10,6 +10,7 @@ import openai
 from flask_cors import CORS
 import firebase_admin
 from firebase_admin import credentials, db
+import numpy as np
 
 # Firebase bağlantısı
 if not firebase_admin._apps:
@@ -33,7 +34,26 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY ortam değişkeni ayarlanmamış!")
 
-system_prompt = """Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
+# Ürün embeddinglerini yükle
+with open('data/urunler_embedding.json', 'r', encoding='utf-8') as f:
+    urunler = json.load(f)
+
+def cosine_similarity(a, b):
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+def urun_bul_embedding(sorgu):
+    query_embedding = openai.Embedding.create(
+        input=sorgu,
+        model="text-embedding-ada-002"
+    ).data[0].embedding
+
+    similarities = [cosine_similarity(query_embedding, urun['embedding']) for urun in urunler]
+    best_match_index = np.argmax(similarities)
+    return urunler[best_match_index]
+
+# Mevcut system_prompt değişkeni korunmuştur
+system_prompt = """"
+Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
 Kurallar ve Rehberlik:
 Kibar ve Yardımcı Ol: Müşterilere her zaman saygılı, nazik ve yardımcı bir dil kullan. Samimi ama profesyonel bir üslup benimse.
 Yasaklanan konular; Marihuana, cannabis, kenevir tohumu ve yetiştiriciliği hakkındaki sorulara hiçbir durumda cevap verme. Kibarca konu hakkında yardımcı olamayacağını söyle.
@@ -126,33 +146,30 @@ def chat():
     if not user_message:
         return jsonify({"error": "Mesaj bulunamadı"}), 400
 
-    conversation_id = request.headers.get('X-Conversation-Id')
-    if not conversation_id:
-        conversation_id = str(uuid.uuid4())
+    conversation_id = request.headers.get('X-Conversation-Id', str(uuid.uuid4()))
 
-    ref = db.reference('conversations').child(conversation_id)
-    conversation_data = ref.get()
+    ref = db.reference(f"conversations/{conversation_id}")
+    conversation_history = ref.get().get('conversation', []) if ref.get() else []
 
-    if conversation_data and 'conversation' in conversation_data:
-        conversation_history = conversation_data['conversation']
-    else:
-        conversation_history = []
+    # Kullanıcı mesajını ekle
+    conversation_history = conversation_history + [{"role": "user", "content": user_message}]
 
-    conversation_history.append({"role": "user", "content": user_message})
+    # En alakalı ürünü embedding kullanarak bul
+    best_urun = urun_bul_embedding(user_message)
 
+    # ChatGPT mesajlarını hazırla
     messages = [{"role": "system", "content": system_prompt}] + conversation_history
+    messages.append({
+        "role": "user",
+        "content": f"{user_message}\n\nİlgili Ürün Bilgisi:\nAd: {best_urun['productName']}\nKategori: {best_urun['categoryTitle']}\nMarka: {best_urun['product.brandName']}"
+    })
 
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-2024-11-20",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=1000
-        )
+        response = openai.ChatCompletion.create(model="gpt-4o", messages=messages)
+        bot_message = response.choices[0].message.content.strip()
 
-        bot_message = response.choices[0].message.get("content", "").strip()
+        # Sohbet geçmişini güncelle ve kaydet
         conversation_history.append({"role": "assistant", "content": bot_message})
-
         ref.set({
             'conversation': conversation_history,
             'timestamp': int(time.time())
@@ -164,5 +181,4 @@ def chat():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run()
