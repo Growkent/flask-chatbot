@@ -190,7 +190,7 @@ def chat():
     messages = [{"role": "system", "content": system_prompt}] + conversation_history
     messages.append({
         "role": "user",
-        "content": f"{user_message}\n\nİlgili Ürün Bilgisi:\nAd: {best_urun['productName']}\nKategori: {best_urun['categoryTitle']}\nMarka: {best_urun['product.brandName']}"
+        "content": f"{user_message}\n\nİlgili Ürün Bilgisi:\nAd: {best_urun['URUNADI']}\nKategori: {best_urun['KATEGORILER']}"
     })
 
     try:
