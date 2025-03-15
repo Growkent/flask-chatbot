@@ -2,16 +2,14 @@ import time
 import os
 import uuid
 import json
-import requests
 from datetime import timedelta
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
 from flask_session import Session
 import redis
 import openai
 from flask_cors import CORS
 import firebase_admin
 from firebase_admin import credentials, db
-import numpy as np
 
 # Firebase bağlantısı
 if not firebase_admin._apps:
@@ -35,40 +33,6 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY ortam değişkeni ayarlanmamış!")
 
-# Embedding dosyası indirme fonksiyonu
-EMBEDDING_URL = "https://github.com/Growkent/flask-chatbot/releases/download/urunler/urunler_embedding2.json"
-local_embedding_path = 'data/urunler_embedding.json'
-
-def embedding_dosyasini_indir():
-    os.makedirs('data', exist_ok=True)
-    if not os.path.exists(local_embedding_path):
-        print("Embedding dosyası indiriliyor...")
-        response = requests.get(EMBEDDING_URL)
-        with open(local_embedding_path, 'wb') as f:
-            f.write(response.content)
-        print("Embedding dosyası indirildi.")
-    else:
-        print("Embedding dosyası zaten mevcut.")
-
-embedding_dosyasini_indir()
-
-# Ürün embeddinglerini yükle
-with open(local_embedding_path, 'r', encoding='utf-8') as f:
-    urunler = json.load(f)
-
-# Embedding eşleştirme fonksiyonları
-def cosine_similarity(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
-def urun_bul_embedding(sorgu):
-    query_embedding = openai.Embedding.create(
-        input=sorgu,
-        model="text-embedding-ada-002"
-    ).data[0].embedding
-
-    similarities = [cosine_similarity(query_embedding, urun['embedding']) for urun in urunler]
-    best_match_index = np.argmax(similarities)
-    return urunler[best_match_index]
 
 system_prompt = """
 Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
@@ -79,7 +43,7 @@ Yasaklanan konular; Marihuana, cannabis, kenevir tohumu ve yetiştiriciliği hak
 Kapsamlı ve Açık Yanıtlar Ver: Müşterilerin sorularına net ve anlaşılır cevaplar ver. Teknik bilgileri basitleştirerek anlat.
 Ürün Bilgilendirmesi:
 Satılan ürünler: Bitki besinleri, topraklar, saksılar ve tablalar, gübreler, hidroponik sistemler, bitki yetiştirme lambaları, hazır kabin setleri, karbon filtre, fan set, reflektör lamba set, sera sistemleri, harvest master kabinler, kabin aksesuarları, kabin yedek parçaları, secret jardin kabinler, köklendirme jelleri, mini seralar, tohum ekim viyolleri, bitki yetiştirme medyaları, fanlar, hava kanalları, karbon filtreler, ozon jeneratörleri, susturucular, koku gidericiler, böcek ilaçları, iklim kontrol cihazları, co2 kontrol, yansıtıcı filmler, böcek filtreleri, flanşlar, saklama kapları, microgreen led, microgreen raf, microgreen tepsi, microgreen yetiştirme setleri vb.
-Ürün önerisi yaparken embedding edilmiş listedeki ürünlerden seç.
+Ürün önerisi yaparken growkent.com içerisindeki ürünlerden öner.
 Ürünlerin kullanım alanları ve avantajları hakkında bilgi ver.
 Stok durumu veya fiyat değişiklikleri konusunda kesin bilgi veremiyorsan ürün linkini ilet.
 Ürünün linkini bulabilmek için örneğin;
@@ -159,35 +123,39 @@ Müşteri bir soru sorduğunda önceki sorulmuş sorularla beraber değerlendir 
 
 @app.route("/chat", methods=["POST"])
 def chat():
+    session.permanent = True
     data = request.get_json()
     user_message = data.get("message")
 
     if not user_message:
         return jsonify({"error": "Mesaj bulunamadı"}), 400
 
-    conversation_id = request.headers.get('X-Conversation-Id', str(uuid.uuid4()))
+    if "conversation_history" not in session:
+        session["conversation_history"] = []
 
-    ref = db.reference(f"conversations/{conversation_id}")
-    conversation_data = ref.get()
-    conversation_history = conversation_data.get('conversation', []) if conversation_data else []
-
-    conversation_history = conversation_history + [{"role": "user", "content": user_message}]
-
-    best_urun = urun_bul_embedding(user_message)
+    conversation_history = session["conversation_history"]
+    conversation_history.append({"role": "user", "content": user_message})
 
     messages = [{"role": "system", "content": system_prompt}] + conversation_history
-    messages.append({
-        "role": "user",
-        "content": f"{user_message}\n\nİlgili Ürün Bilgisi:\nAd: {best_urun['URUNADI']}\nKategori: {best_urun['KATEGORILER']}"
-    })
 
     try:
-        response = openai.ChatCompletion.create(model="gpt-4o", messages=messages)
-        bot_message = response.choices[0].message.content.strip()
+        response = openai.ChatCompletion.create(
+            model="gpt-4o-2024-11-20",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1000
+        )
 
-        conversation_history.append({"role": "user", "content": user_message})
+        bot_message = response.choices[0].message.get("content", "").strip()
         conversation_history.append({"role": "assistant", "content": bot_message})
+        session["conversation_history"] = conversation_history
 
+        if "conversation_id" not in session:
+            session["conversation_id"] = str(uuid.uuid4())
+
+        conversation_id = session["conversation_id"]
+
+        ref = db.reference('conversations').child(conversation_id)
         ref.set({
             'conversation': conversation_history,
             'timestamp': int(time.time())
