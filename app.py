@@ -2,11 +2,9 @@ import time
 import os
 import uuid
 import json
-from datetime import timedelta
-from flask import Flask, request, jsonify, session
-from flask_session import Session
-import openai
+from flask import Flask, request, jsonify
 from flask_cors import CORS
+import openai
 import firebase_admin
 from firebase_admin import credentials, db
 
@@ -16,25 +14,20 @@ if not firebase_admin._apps:
     cred = credentials.Certificate(json.loads(firebase_credentials_json))
     firebase_admin.initialize_app(cred, {'databaseURL': os.getenv("FIREBASE_DB_URL")})
 
-# Flask uygulaması
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
 
 CORS(app,
-     supports_credentials=True,
      origins=["https://www.growkent.com"],
      methods=["GET", "POST", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Conversation-Id"]
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
 )
 
-# OpenAI anahtarı
 openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY ortam değişkeni ayarlanmamış!")
 
-
-system_prompt = """
-Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
+system_prompt = """Sen, Growkent'in akıllı müşteri destek asistanısın. Growkent, hobi bahçecilik ürünleri satmaktadır. Görevin, müşterilere doğru, net ve profesyonel yanıtlar vermek, onlara en iyi alışveriş deneyimini sunmaktır.
 1. Genel Kullanım Kapsamı
 • Ürün Bilgisi: Growkent ürünleri hakkında en doğru ve güncel bilgileri sağla. Ürünlerin işlevlerini, kullanım yöntemlerini ve en iyi uygulamalarını açıkla.
 • Bağlam Takibi: Kullanıcıyla yapılan sohbetin bağlamını dikkatlice takip et ve önceki mesajlara uygun, tutarlı yanıtlar ver. İletişimi mümkün olduğunca akıcı tut.
@@ -120,19 +113,26 @@ Tohum satışımız yoktur.
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    session.permanent = True
     data = request.get_json()
     user_message = data.get("message")
+    conversation_id = data.get("conversation_id")
 
     if not user_message:
         return jsonify({"error": "Mesaj bulunamadı"}), 400
 
-    if "conversation_history" not in session:
-        session["conversation_history"] = []
+    if not conversation_id:
+        # İlk mesaj ise yeni bir ID oluştur
+        conversation_id = str(uuid.uuid4())
+        conversation_history = []
+    else:
+        # Firebase'den önceki konuşma geçmişini al
+        ref = db.reference('conversations').child(conversation_id).child('conversation')
+        conversation_history = ref.get() or []
 
-    conversation_history = session["conversation_history"]
+    # Kullanıcı mesajını ekle
     conversation_history.append({"role": "user", "content": user_message})
 
+    # OpenAI'a göndermek üzere mesaj dizisini oluştur
     messages = [{"role": "system", "content": system_prompt}] + conversation_history
 
     try:
@@ -144,21 +144,21 @@ def chat():
         )
 
         bot_message = response.choices[0].message.get("content", "").strip()
+
+        # Bot yanıtını konuşma geçmişine ekle
         conversation_history.append({"role": "assistant", "content": bot_message})
-        session["conversation_history"] = conversation_history
 
-        if "conversation_id" not in session:
-            session["conversation_id"] = str(uuid.uuid4())
-
-        conversation_id = session["conversation_id"]
-
+        # Firebase'e konuşmayı kaydet
         ref = db.reference('conversations').child(conversation_id)
         ref.set({
             'conversation': conversation_history,
             'timestamp': int(time.time())
         })
 
-        return jsonify({"message": bot_message})
+        return jsonify({
+            "message": bot_message,
+            "conversation_id": conversation_id
+        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
