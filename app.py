@@ -5,7 +5,6 @@ import json
 from datetime import timedelta
 from flask import Flask, request, jsonify, session
 from flask_session import Session
-import redis
 import openai
 from flask_cors import CORS
 import firebase_admin
