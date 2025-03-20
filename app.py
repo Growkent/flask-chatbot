@@ -138,7 +138,7 @@ def chat():
 
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-o1-pro",
+            model="o1-pro",
             messages=messages,
             temperature=0.7,
             max_tokens=1000
