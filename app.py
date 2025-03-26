@@ -35,9 +35,11 @@ CORS(app,
      allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
 )
 
-# OpenAI Client tanımı
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"),
-                default_headers={"OpenAI-Beta": "assistants=v2"})
+# OpenAI Client (Assistants API v2) tanımı
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    default_headers={"OpenAI-Beta": "assistants=v2"}
+)
 
 assistant_id = os.getenv("OPENAI_ASSISTANT_ID")
 if not assistant_id:
@@ -63,7 +65,7 @@ def chat():
         else:
             ref = db.reference('conversations').child(conversation_id)
             stored_data = ref.get()
-            
+
             if stored_data and 'thread_id' in stored_data and stored_data['thread_id']:
                 thread_id = stored_data['thread_id']
                 logging.info(f"Mevcut thread kullanılıyor: {thread_id}")
@@ -84,7 +86,10 @@ def chat():
         )
 
         while True:
-            run_status = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+            run_status = client.beta.threads.runs.retrieve(
+                thread_id=thread_id,
+                run_id=run.id
+            )
             logging.info(f"Run durumu: {run_status.status}")
             if run_status.status == 'completed':
                 break
@@ -111,3 +116,16 @@ def chat():
     except Exception as e:
         logging.exception("Chat sırasında hata oluştu:")
         return jsonify({"error": str(e)}), 500
+
+# Test endpoint'i ekleyerek Render'da test edilebilirliğini arttır
+@app.route("/")
+def index():
+    return jsonify({"status": "Uygulama çalışıyor!"}), 200
+
+@app.route("/test")
+def test():
+    return jsonify({"status": "OK"}), 200
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
