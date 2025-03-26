@@ -8,10 +8,18 @@ import openai
 import firebase_admin
 from firebase_admin import credentials, db
 
+# Firebase bağlantısını tek seferde ve doğru yap
 if not firebase_admin._apps:
     firebase_credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+    firebase_db_url = os.getenv("FIREBASE_DB_URL")
+
     if not firebase_credentials_json:
         raise ValueError("GOOGLE_APPLICATION_CREDENTIALS_JSON ortam değişkeni ayarlanmamış!")
+    if not firebase_db_url:
+        raise ValueError("FIREBASE_DB_URL ortam değişkeni ayarlanmamış!")
+
+    cred = credentials.Certificate(json.loads(firebase_credentials_json))
+    firebase_admin.initialize_app(cred, {'databaseURL': firebase_db_url})
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
