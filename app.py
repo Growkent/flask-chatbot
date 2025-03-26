@@ -54,7 +54,12 @@ def chat():
     else:
         ref = db.reference('conversations').child(conversation_id)
         stored_data = ref.get()
-        thread_id = stored_data.get('thread_id') if stored_data else openai.beta.threads.create().id
+        
+        if stored_data and 'thread_id' in stored_data and stored_data['thread_id']:
+            thread_id = stored_data['thread_id']
+        else:
+            thread = openai.beta.threads.create()
+            thread_id = thread.id
 
     openai.beta.threads.messages.create(
         thread_id=thread_id,
@@ -67,7 +72,6 @@ def chat():
         assistant_id=assistant_id
     )
 
-    # Assistant yanıt verene kadar bekle
     while True:
         run_status = openai.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
         if run_status.status == 'completed':
@@ -77,7 +81,6 @@ def chat():
     messages = openai.beta.threads.messages.list(thread_id=thread_id)
     bot_message = messages.data[0].content[0].text.value
 
-    # Firebase'e konuşmayı kaydet
     ref = db.reference('conversations').child(conversation_id)
     ref.set({
         'thread_id': thread_id,
@@ -88,7 +91,3 @@ def chat():
         "message": bot_message,
         "conversation_id": conversation_id
     })
-
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
