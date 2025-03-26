@@ -107,3 +107,7 @@ def chat():
             "message": bot_message,
             "conversation_id": conversation_id
         })
+
+    except Exception as e:
+        logging.exception("Chat sırasında hata oluştu:")
+        return jsonify({"error": str(e)}), 500
