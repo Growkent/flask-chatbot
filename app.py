@@ -10,8 +10,7 @@ from firebase_admin import credentials, db
 
 # Firebase bağlantısı
 if not firebase_admin._apps:
-    firebase_credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-    cred = credentials.Certificate(json.loads(firebase_credentials_json))
+    cred = credentials.Certificate("serviceAccountKey.json")
     firebase_admin.initialize_app(cred, {'databaseURL': os.getenv("FIREBASE_DB_URL")})
 
 app = Flask(__name__)
