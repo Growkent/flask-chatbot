@@ -35,7 +35,6 @@ CORS(app,
      allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
 )
 
-# OpenAI Client (Assistants API v2) tanımı
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     default_headers={"OpenAI-Beta": "assistants=v2"}
@@ -59,7 +58,7 @@ def chat():
 
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
-            thread = client.beta.threads.create(headers={"OpenAI-Beta": "assistants=v2"})
+            thread = client.beta.threads.create()
             thread_id = thread.id
             logging.info(f"Yeni thread oluşturuldu: {thread_id}")
         else:
@@ -70,28 +69,25 @@ def chat():
                 thread_id = stored_data['thread_id']
                 logging.info(f"Mevcut thread kullanılıyor: {thread_id}")
             else:
-                thread = client.beta.threads.create(headers={"OpenAI-Beta": "assistants=v2"})
+                thread = client.beta.threads.create()
                 thread_id = thread.id
                 logging.info(f"Thread bulunamadı, yenisi oluşturuldu: {thread_id}")
 
         client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
-            content=user_message,
-            headers={"OpenAI-Beta": "assistants=v2"}
+            content=user_message
         )
 
         run = client.beta.threads.runs.create(
             thread_id=thread_id,
-            assistant_id=assistant_id,
-            headers={"OpenAI-Beta": "assistants=v2"}
+            assistant_id=assistant_id
         )
 
         while True:
             run_status = client.beta.threads.runs.retrieve(
                 thread_id=thread_id,
-                run_id=run.id,
-                headers={"OpenAI-Beta": "assistants=v2"}
+                run_id=run.id
             )
             logging.info(f"Run durumu: {run_status.status}")
             if run_status.status == 'completed':
@@ -100,10 +96,7 @@ def chat():
                 raise Exception("OpenAI run failed.")
             time.sleep(1)
 
-        messages = client.beta.threads.messages.list(
-            thread_id=thread_id,
-            headers={"OpenAI-Beta": "assistants=v2"}
-        )
+        messages = client.beta.threads.messages.list(thread_id=thread_id)
         bot_message = messages.data[0].content[0].text.value
 
         ref = db.reference('conversations').child(conversation_id)
