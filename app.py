@@ -59,7 +59,7 @@ def chat():
 
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
-            thread = client.beta.threads.create()
+            thread = client.beta.threads.create(headers={"OpenAI-Beta": "assistants=v2"})
             thread_id = thread.id
             logging.info(f"Yeni thread oluşturuldu: {thread_id}")
         else:
@@ -70,25 +70,28 @@ def chat():
                 thread_id = stored_data['thread_id']
                 logging.info(f"Mevcut thread kullanılıyor: {thread_id}")
             else:
-                thread = client.beta.threads.create()
+                thread = client.beta.threads.create(headers={"OpenAI-Beta": "assistants=v2"})
                 thread_id = thread.id
                 logging.info(f"Thread bulunamadı, yenisi oluşturuldu: {thread_id}")
 
         client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
-            content=user_message
+            content=user_message,
+            headers={"OpenAI-Beta": "assistants=v2"}
         )
 
         run = client.beta.threads.runs.create(
             thread_id=thread_id,
-            assistant_id=assistant_id
+            assistant_id=assistant_id,
+            headers={"OpenAI-Beta": "assistants=v2"}
         )
 
         while True:
             run_status = client.beta.threads.runs.retrieve(
                 thread_id=thread_id,
-                run_id=run.id
+                run_id=run.id,
+                headers={"OpenAI-Beta": "assistants=v2"}
             )
             logging.info(f"Run durumu: {run_status.status}")
             if run_status.status == 'completed':
@@ -97,7 +100,10 @@ def chat():
                 raise Exception("OpenAI run failed.")
             time.sleep(1)
 
-        messages = client.beta.threads.messages.list(thread_id=thread_id)
+        messages = client.beta.threads.messages.list(
+            thread_id=thread_id,
+            headers={"OpenAI-Beta": "assistants=v2"}
+        )
         bot_message = messages.data[0].content[0].text.value
 
         ref = db.reference('conversations').child(conversation_id)
@@ -116,16 +122,3 @@ def chat():
     except Exception as e:
         logging.exception("Chat sırasında hata oluştu:")
         return jsonify({"error": str(e)}), 500
-
-# Test endpoint'i ekleyerek Render'da test edilebilirliğini arttır
-@app.route("/")
-def index():
-    return jsonify({"status": "Uygulama çalışıyor!"}), 200
-
-@app.route("/test")
-def test():
-    return jsonify({"status": "OK"}), 200
-
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
