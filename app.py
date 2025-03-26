@@ -40,54 +40,57 @@ if not assistant_id:
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    data = request.get_json()
-    user_message = data.get("message")
-    conversation_id = data.get("conversation_id")
+    try:
+        data = request.get_json()
+        user_message = data.get("message")
+        conversation_id = data.get("conversation_id")
 
-    if not user_message:
-        return jsonify({"error": "Mesaj bulunamadı"}), 400
+        if not user_message:
+            return jsonify({"error": "Mesaj bulunamadı"}), 400
 
-    if not conversation_id:
-        conversation_id = str(uuid.uuid4())
-        thread = openai.beta.threads.create()
-        thread_id = thread.id
-    else:
-        ref = db.reference('conversations').child(conversation_id)
-        stored_data = ref.get()
-        
-        if stored_data and 'thread_id' in stored_data and stored_data['thread_id']:
-            thread_id = stored_data['thread_id']
-        else:
+        if not conversation_id:
+            conversation_id = str(uuid.uuid4())
             thread = openai.beta.threads.create()
             thread_id = thread.id
+        else:
+            ref = db.reference('conversations').child(conversation_id)
+            stored_data = ref.get()
+            
+            if stored_data and 'thread_id' in stored_data and stored_data['thread_id']:
+                thread_id = stored_data['thread_id']
+            else:
+                thread = openai.beta.threads.create()
+                thread_id = thread.id
 
-    openai.beta.threads.messages.create(
-        thread_id=thread_id,
-        role="user",
-        content=user_message
-    )
+        openai.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=user_message
+        )
 
-    run = openai.beta.threads.runs.create(
-        thread_id=thread_id,
-        assistant_id=assistant_id
-    )
+        run = openai.beta.threads.runs.create(
+            thread_id=thread_id,
+            assistant_id=assistant_id
+        )
 
-    while True:
-        run_status = openai.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
-        if run_status.status == 'completed':
-            break
-        time.sleep(1)
+        while True:
+            run_status = openai.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+            if run_status.status == 'completed':
+                break
+            time.sleep(1)
 
-    messages = openai.beta.threads.messages.list(thread_id=thread_id)
-    bot_message = messages.data[0].content[0].text.value
+        messages = openai.beta.threads.messages.list(thread_id=thread_id)
+        bot_message = messages.data[0].content[0].text.value
 
-    ref = db.reference('conversations').child(conversation_id)
-    ref.set({
-        'thread_id': thread_id,
-        'timestamp': int(time.time())
-    })
+        ref = db.reference('conversations').child(conversation_id)
+        ref.set({
+            'thread_id': thread_id,
+            'timestamp': int(time.time())
+        })
 
-    return jsonify({
-        "message": bot_message,
-        "conversation_id": conversation_id
-    })
+        return jsonify({
+            "message": bot_message,
+            "conversation_id": conversation_id
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
