@@ -1,7 +1,7 @@
 Flask
 Flask-Session
 firebase-admin
-openai==0.28
+openai==1.14.3
 requests
 waitress
 flask-cors
