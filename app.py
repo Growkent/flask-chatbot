@@ -2,13 +2,17 @@ import time
 import os
 import uuid
 import json
+import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import openai
 import firebase_admin
 from firebase_admin import credentials, db
 
-# Firebase bağlantısını tek seferde ve doğru yap
+# Logging ayarları (loglama için önemli)
+logging.basicConfig(level=logging.INFO)
+
+# Firebase bağlantısı
 if not firebase_admin._apps:
     firebase_credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
     firebase_db_url = os.getenv("FIREBASE_DB_URL")
@@ -20,6 +24,7 @@ if not firebase_admin._apps:
 
     cred = credentials.Certificate(json.loads(firebase_credentials_json))
     firebase_admin.initialize_app(cred, {'databaseURL': firebase_db_url})
+    logging.info("Firebase başarıyla başlatıldı.")
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
@@ -34,7 +39,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 if not openai.api_key:
     raise ValueError("OPENAI_API_KEY ortam değişkeni ayarlanmamış!")
 
-assistant_id = os.getenv("OPENAI_ASSISTANT_ID")  # Assistant API'den aldığın Assistant ID
+assistant_id = os.getenv("OPENAI_ASSISTANT_ID")
 if not assistant_id:
     raise ValueError("OPENAI_ASSISTANT_ID ortam değişkeni ayarlanmamış!")
 
@@ -48,19 +53,24 @@ def chat():
         if not user_message:
             return jsonify({"error": "Mesaj bulunamadı"}), 400
 
+        logging.info(f"Yeni mesaj alındı: {user_message}, conversation_id: {conversation_id}")
+
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
             thread = openai.beta.threads.create()
             thread_id = thread.id
+            logging.info(f"Yeni thread oluşturuldu: {thread_id}")
         else:
             ref = db.reference('conversations').child(conversation_id)
             stored_data = ref.get()
             
             if stored_data and 'thread_id' in stored_data and stored_data['thread_id']:
                 thread_id = stored_data['thread_id']
+                logging.info(f"Mevcut thread kullanılıyor: {thread_id}")
             else:
                 thread = openai.beta.threads.create()
                 thread_id = thread.id
+                logging.info(f"Thread bulunamadı, yenisi oluşturuldu: {thread_id}")
 
         openai.beta.threads.messages.create(
             thread_id=thread_id,
@@ -75,8 +85,11 @@ def chat():
 
         while True:
             run_status = openai.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+            logging.info(f"Run durumu: {run_status.status}")
             if run_status.status == 'completed':
                 break
+            elif run_status.status == 'failed':
+                raise Exception("OpenAI run failed.")
             time.sleep(1)
 
         messages = openai.beta.threads.messages.list(thread_id=thread_id)
@@ -88,9 +101,26 @@ def chat():
             'timestamp': int(time.time())
         })
 
+        logging.info(f"Cevap başarıyla gönderildi: {bot_message[:50]}...")
+
         return jsonify({
             "message": bot_message,
             "conversation_id": conversation_id
         })
+
     except Exception as e:
+        logging.exception("Chat sırasında hata oluştu:")
         return jsonify({"error": str(e)}), 500
+
+# Test endpoint'i ekleyerek Render'da test edilebilirliğini arttır
+@app.route("/")
+def index():
+    return jsonify({"status": "Uygulama çalışıyor!"}), 200
+
+@app.route("/test")
+def test():
+    return jsonify({"status": "OK"}), 200
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
