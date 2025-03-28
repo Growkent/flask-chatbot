@@ -110,7 +110,6 @@ if conversation_id:
     })
 else:
     raise ValueError("conversation_id değeri bulunamadı veya boş.")        
-})
 
         logging.info(f"Cevap başarıyla gönderildi: {bot_message[:50]}...")
 
