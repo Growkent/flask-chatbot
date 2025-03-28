@@ -6,6 +6,7 @@ import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import openai
+import requests
 import firebase_admin
 from firebase_admin import credentials, db
 
