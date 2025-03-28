@@ -102,11 +102,15 @@ def chat():
         )
         bot_message = messages.data[0].content[0].text.value
 
-        ref = db.reference('conversations').child(conversation_id)
-        ref.set({
-            'thread_id': thread_id,
-            'timestamp': int(time.time())
-        })
+        ref = db.reference('conversations')
+if conversation_id:
+    ref.child(conversation_id).set({
+        'thread_id': thread_id,
+        'timestamp': int(time.time())
+    })
+else:
+    raise ValueError("conversation_id değeri bulunamadı veya boş.")        
+})
 
         logging.info(f"Cevap başarıyla gönderildi: {bot_message[:50]}...")
 
