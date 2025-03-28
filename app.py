@@ -96,11 +96,23 @@ def chat():
                 raise Exception("OpenAI run failed.")
             time.sleep(1)
 
-        messages = openai.beta.threads.messages.list(
-            thread_id=thread_id,
-            extra_headers={"OpenAI-Beta": "assistants=v2"}
+        # Bu kısım değişti - manuel API çağrısı ile alıyoruz.
+        headers = {
+            "Authorization": f"Bearer {openai.api_key}",
+            "OpenAI-Beta": "assistants=v2",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.get(
+            f"https://api.openai.com/v1/threads/{thread_id}/messages",
+            headers=headers
         )
-        bot_message = messages.data[0].content[0].text.value
+
+        if response.status_code != 200:
+            raise Exception(f"OpenAI mesaj listeleme hatası: {response.text}")
+
+        messages_json = response.json()
+        bot_message = messages_json['data'][0]['content'][0]['text']['value']
 
         ref = db.reference('conversations')
         if conversation_id:
