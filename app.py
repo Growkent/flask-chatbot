@@ -143,15 +143,55 @@ def manychat():
     if not message:
         return jsonify({"error": "Mesaj bulunamadı"}), 400
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": message}],
-        temperature=0.7
+    if not thread_id:
+        thread = openai.beta.threads.create(extra_headers={"OpenAI-Beta": "assistants=v2"})
+        thread_id = thread.id
+
+    # Kullanıcının mesajını mevcut thread'e ekle
+    openai.beta.threads.messages.create(
+        thread_id=thread_id,
+        role="user",
+        content=message,
+        extra_headers={"OpenAI-Beta": "assistants=v2"}
     )
 
-    bot_response = response.choices[0].message.content
+    # Run'ı başlat
+    run = openai.beta.threads.runs.create(
+        thread_id=thread_id,
+        assistant_id=assistant_id,
+        extra_headers={"OpenAI-Beta": "assistants=v2"}
+    )
 
-    return jsonify({"response": bot_response})
+    # Run tamamlanmasını bekle
+    while True:
+        run_status = openai.beta.threads.runs.retrieve(
+            thread_id=thread_id,
+            run_id=run.id,
+            extra_headers={"OpenAI-Beta": "assistants=v2"}
+        )
+        if run_status.status == 'completed':
+            break
+        elif run_status.status == 'failed':
+            return jsonify({"error": "OpenAI run failed."}), 500
+        time.sleep(1)
 
-if __name__ == "__main__":
-    app.run(debug=True)
+    # Mesajları çek
+    response = requests.get(
+        f"https://api.openai.com/v1/threads/{thread_id}/messages",
+        headers={
+            "Authorization": f"Bearer {openai.api_key}",
+            "OpenAI-Beta": "assistants=v2",
+            "Content-Type": "application/json"
+        }
+    )
+
+    if response.status_code != 200:
+        return jsonify({"error": f"OpenAI mesaj listeleme hatası: {response.text}"}), 500
+
+    messages_json = response.json()
+    bot_message = messages_json['data'][0]['content'][0]['text']['value']
+
+    return jsonify({
+        "response": bot_message,
+        "thread_id": thread_id
+    })
