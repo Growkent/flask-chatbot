@@ -97,7 +97,6 @@ def chat():
                 raise Exception("OpenAI run failed.")
             time.sleep(1)
 
-        # Bu kısım değişti - manuel API çağrısı ile alıyoruz.
         headers = {
             "Authorization": f"Bearer {openai.api_key}",
             "OpenAI-Beta": "assistants=v2",
@@ -134,3 +133,25 @@ def chat():
     except Exception as e:
         logging.exception("Chat sırasında hata oluştu:")
         return jsonify({"error": str(e)}), 500
+
+@app.route("/manychat", methods=["POST"])
+def manychat():
+    data = request.get_json()
+    message = data.get("message")
+    thread_id = data.get("thread_id")
+
+    if not message:
+        return jsonify({"error": "Mesaj bulunamadı"}), 400
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": message}],
+        temperature=0.7
+    )
+
+    bot_response = response.choices[0].message.content
+
+    return jsonify({"response": bot_response})
+
+if __name__ == "__main__":
+    app.run(debug=True)
