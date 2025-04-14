@@ -136,62 +136,74 @@ def chat():
 
 @app.route("/manychat", methods=["POST"])
 def manychat():
-    data = request.get_json()
-    message = data.get("message")
-    thread_id = data.get("thread_id")
+    try:
+        data = request.get_json()
+        user_message = data.get("message")
+        conversation_id = data.get("user_id")  # ManyChat'in benzersiz kullanıcı ID'si
 
-    if not message:
-        return jsonify({"error": "Mesaj bulunamadı"}), 400
+        if not user_message or not conversation_id:
+            return jsonify({"response": "Eksik veri gönderildi."}), 400
 
-    if not thread_id:
-        thread = openai.beta.threads.create(extra_headers={"OpenAI-Beta": "assistants=v2"})
-        thread_id = thread.id
+        logging.info(f"[ManyChat] Yeni mesaj: {user_message}, Kullanıcı ID: {conversation_id}")
 
-    # Kullanıcının mesajını mevcut thread'e ekle
-    openai.beta.threads.messages.create(
-        thread_id=thread_id,
-        role="user",
-        content=message,
-        extra_headers={"OpenAI-Beta": "assistants=v2"}
-    )
+        # Firebase’de bu kullanıcıya ait önceki sohbet thread’i kontrol edilir
+        ref = db.reference('manychat_conversations').child(conversation_id)
+        stored_data = ref.get()
 
-    # Run'ı başlat
-    run = openai.beta.threads.runs.create(
-        thread_id=thread_id,
-        assistant_id=assistant_id,
-        extra_headers={"OpenAI-Beta": "assistants=v2"}
-    )
+        if stored_data and 'thread_id' in stored_data:
+            thread_id = stored_data['thread_id']
+            logging.info(f"[ManyChat] Mevcut thread kullanılıyor: {thread_id}")
+        else:
+            thread = openai.beta.threads.create(extra_headers={"OpenAI-Beta": "assistants=v2"})
+            thread_id = thread.id
+            ref.set({'thread_id': thread_id, 'timestamp': int(time.time())})
+            logging.info(f"[ManyChat] Yeni thread oluşturuldu: {thread_id}")
 
-    # Run tamamlanmasını bekle
-    while True:
-        run_status = openai.beta.threads.runs.retrieve(
+        # Kullanıcı mesajını OpenAI asistanına gönder
+        openai.beta.threads.messages.create(
             thread_id=thread_id,
-            run_id=run.id,
+            role="user",
+            content=user_message,
             extra_headers={"OpenAI-Beta": "assistants=v2"}
         )
-        if run_status.status == 'completed':
-            break
-        elif run_status.status == 'failed':
-            return jsonify({"error": "OpenAI run failed."}), 500
-        time.sleep(1)
 
-    # Mesajları çek
-    response = requests.get(
-        f"https://api.openai.com/v1/threads/{thread_id}/messages",
-        headers={
-            "Authorization": f"Bearer {openai.api_key}",
-            "OpenAI-Beta": "assistants=v2",
-            "Content-Type": "application/json"
-        }
-    )
+        run = openai.beta.threads.runs.create(
+            thread_id=thread_id,
+            assistant_id=assistant_id,
+            extra_headers={"OpenAI-Beta": "assistants=v2"}
+        )
 
-    if response.status_code != 200:
-        return jsonify({"error": f"OpenAI mesaj listeleme hatası: {response.text}"}), 500
+        # Run tamamlanana kadar bekle
+        while True:
+            run_status = openai.beta.threads.runs.retrieve(
+                thread_id=thread_id,
+                run_id=run.id,
+                extra_headers={"OpenAI-Beta": "assistants=v2"}
+            )
+            logging.info(f"[ManyChat] Run durumu: {run_status.status}")
+            if run_status.status == 'completed':
+                break
+            elif run_status.status == 'failed':
+                raise Exception("[ManyChat] OpenAI run failed.")
+            time.sleep(1)
 
-    messages_json = response.json()
-    bot_message = messages_json['data'][0]['content'][0]['text']['value']
+        # Mesajları al ve son mesajı kullanıcıya dön
+        messages = openai.beta.threads.messages.list(
+            thread_id=thread_id,
+            extra_headers={"OpenAI-Beta": "assistants=v2"}
+        )
+        bot_message = messages.data[0].content[0].text.value
 
-    return jsonify({
-        "response": bot_message,
-        "thread_id": thread_id
-    })
+        # Firebase timestamp güncelle
+        ref.update({'timestamp': int(time.time())})
+
+        logging.info(f"[ManyChat] Yanıt: {bot_message}")
+
+        return jsonify({
+            "response": bot_message,
+            "thread_id": thread_id
+        })
+
+    except Exception as e:
+        logging.exception("[ManyChat] Hata oluştu:")
+        return jsonify({"response": str(e)}), 500
