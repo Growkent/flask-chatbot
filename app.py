@@ -1,216 +1,198 @@
-import time
+
 import os
+import time
 import uuid
 import json
 import logging
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import openai
-import requests
+from openai import OpenAI
 import firebase_admin
 from firebase_admin import credentials, db
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# Logging ayarları
+# Logging
 logging.basicConfig(level=logging.INFO)
+
+# OpenAI ayarları
+api_key = os.getenv("OPENAI_API_KEY")
+prompt_id = os.getenv("OPENAI_PROMPT_ID")
+prompt_version = os.getenv("OPENAI_PROMPT_VERSION", "4")
+
+if not api_key:
+    raise ValueError("OPENAI_API_KEY ortam değişkeni eksik!")
+
+if not prompt_id:
+    raise ValueError("OPENAI_PROMPT_ID ortam değişkeni eksik!")
+
+client = OpenAI(
+    api_key=api_key,
+    timeout=60.0,
+    max_retries=2
+)
 
 # Firebase bağlantısı
 if not firebase_admin._apps:
-    firebase_credentials_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+    firebase_credentials_json = os.getenv(
+        "GOOGLE_APPLICATION_CREDENTIALS_JSON"
+    )
     firebase_db_url = os.getenv("FIREBASE_DB_URL")
 
     if not firebase_credentials_json:
-        raise ValueError("GOOGLE_APPLICATION_CREDENTIALS_JSON ortam değişkeni ayarlanmamış!")
-    if not firebase_db_url:
-        raise ValueError("FIREBASE_DB_URL ortam değişkeni ayarlanmamış!")
+        raise ValueError(
+            "GOOGLE_APPLICATION_CREDENTIALS_JSON ortam değişkeni eksik!"
+        )
 
-    cred = credentials.Certificate(json.loads(firebase_credentials_json))
-    firebase_admin.initialize_app(cred, {'databaseURL': firebase_db_url})
+    if not firebase_db_url:
+        raise ValueError("FIREBASE_DB_URL ortam değişkeni eksik!")
+
+    cred = credentials.Certificate(
+        json.loads(firebase_credentials_json)
+    )
+
+    firebase_admin.initialize_app(
+        cred,
+        {"databaseURL": firebase_db_url}
+    )
+
     logging.info("Firebase başarıyla başlatıldı.")
 
+# Flask
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "default_secret_key")
 
-CORS(app,
-     origins=["https://www.growkent.com"],
-     methods=["GET", "POST", "OPTIONS"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
+CORS(
+    app,
+    origins=["https://www.growkent.com"],
+    methods=["GET", "POST", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With"
+    ]
 )
 
-assistant_id = os.getenv("OPENAI_ASSISTANT_ID")
-if not assistant_id:
-    raise ValueError("OPENAI_ASSISTANT_ID ortam değişkeni ayarlanmamış!")
+
+def get_ai_response(user_message, previous_response_id=None):
+    """Prompt sürümünü kullanarak Responses API'den yanıt alır."""
+
+    params = {
+        "prompt": {
+            "id": prompt_id,
+            "version": prompt_version
+        },
+        "input": user_message
+    }
+
+    # Varsa önceki yanıt üzerinden konuşmayı sürdür.
+    if previous_response_id:
+        params["previous_response_id"] = previous_response_id
+
+    response = client.responses.create(**params)
+
+    bot_message = response.output_text
+
+    if not bot_message:
+        raise ValueError("OpenAI boş bir yanıt döndürdü.")
+
+    return bot_message, response.id
+
 
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
+
         user_message = data.get("message")
         conversation_id = data.get("conversation_id")
 
-        if not user_message:
-            return jsonify({"error": "Mesaj bulunamadı"}), 400
+        if not isinstance(user_message, str) or not user_message.strip():
+            return jsonify({"error": "Mesaj bulunamadı."}), 400
 
-        logging.info(f"Yeni mesaj alındı: {user_message}, conversation_id: {conversation_id}")
-
+        # İlk mesajda yeni bir konuşma kimliği oluştur.
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
-            thread = openai.beta.threads.create(extra_headers={"OpenAI-Beta": "assistants=v2"})
-            thread_id = thread.id
-            logging.info(f"Yeni thread oluşturuldu: {thread_id}")
-        else:
-            ref = db.reference('conversations').child(conversation_id)
-            stored_data = ref.get()
 
-            if stored_data and 'thread_id' in stored_data and stored_data['thread_id']:
-                thread_id = stored_data['thread_id']
-                logging.info(f"Mevcut thread kullanılıyor: {thread_id}")
-            else:
-                thread = openai.beta.threads.create(extra_headers={"OpenAI-Beta": "assistants=v2"})
-                thread_id = thread.id
-                logging.info(f"Thread bulunamadı, yenisi oluşturuldu: {thread_id}")
+        ref = db.reference("conversations").child(conversation_id)
+        stored_data = ref.get() or {}
 
-        openai.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=user_message,
-            extra_headers={"OpenAI-Beta": "assistants=v2"}
+        previous_response_id = stored_data.get("previous_response_id")
+
+        logging.info(
+            "Chat mesajı alındı. conversation_id=%s",
+            conversation_id
         )
 
-        run = openai.beta.threads.runs.create(
-            thread_id=thread_id,
-            assistant_id=assistant_id,
-            extra_headers={"OpenAI-Beta": "assistants=v2"}
+        bot_message, response_id = get_ai_response(
+            user_message.strip(),
+            previous_response_id
         )
 
-        while True:
-            run_status = openai.beta.threads.runs.retrieve(
-                thread_id=thread_id,
-                run_id=run.id,
-                extra_headers={"OpenAI-Beta": "assistants=v2"}
-            )
-            logging.info(f"Run durumu: {run_status.status}")
-            if run_status.status == 'completed':
-                break
-            elif run_status.status == 'failed':
-                raise Exception("OpenAI run failed.")
-            time.sleep(1)
-
-        headers = {
-            "Authorization": f"Bearer {openai.api_key}",
-            "OpenAI-Beta": "assistants=v2",
-            "Content-Type": "application/json"
-        }
-
-        response = requests.get(
-            f"https://api.openai.com/v1/threads/{thread_id}/messages",
-            headers=headers
-        )
-
-        if response.status_code != 200:
-            raise Exception(f"OpenAI mesaj listeleme hatası: {response.text}")
-
-        messages_json = response.json()
-        bot_message = messages_json['data'][0]['content'][0]['text']['value']
-
-        ref = db.reference('conversations')
-        if conversation_id:
-            ref.child(conversation_id).set({
-                'thread_id': thread_id,
-                'timestamp': int(time.time())
-            })
-        else:
-            raise ValueError("conversation_id değeri bulunamadı veya boş.")
-
-        logging.info(f"Cevap başarıyla gönderildi: {bot_message[:50]}...")
+        # Son yanıt kimliğini sakla.
+        ref.set({
+            "previous_response_id": response_id,
+            "timestamp": int(time.time())
+        })
 
         return jsonify({
             "message": bot_message,
             "conversation_id": conversation_id
         })
 
-    except Exception as e:
-        logging.exception("Chat sırasında hata oluştu:")
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        logging.exception("Chat sırasında hata oluştu.")
+        return jsonify({
+            "error": "Yanıt oluşturulurken bir hata oluştu. Lütfen tekrar deneyin."
+        }), 500
+
 
 @app.route("/manychat", methods=["POST"])
 def manychat():
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
+
         user_message = data.get("message")
-        conversation_id = data.get("user_id")  # ManyChat'in benzersiz kullanıcı ID'si
+        user_id = data.get("user_id")
 
-        if not user_message or not conversation_id:
-            return jsonify({"response": "Eksik veri gönderildi."}), 400
+        if (
+            not isinstance(user_message, str)
+            or not user_message.strip()
+            or not user_id
+        ):
+            return jsonify({
+                "response": "Mesaj veya kullanıcı bilgisi eksik."
+            }), 400
 
-        logging.info(f"[ManyChat] Yeni mesaj: {user_message}, Kullanıcı ID: {conversation_id}")
+        user_id = str(user_id)
 
-        ref = db.reference('manychat_conversations').child(conversation_id)
-        stored_data = ref.get()
+        ref = db.reference("manychat_conversations").child(user_id)
+        stored_data = ref.get() or {}
 
-        if stored_data and 'thread_id' in stored_data:
-            thread_id = stored_data['thread_id']
-            logging.info(f"[ManyChat] Mevcut thread kullanılıyor: {thread_id}")
-        else:
-            thread = openai.beta.threads.create(extra_headers={"OpenAI-Beta": "assistants=v2"})
-            thread_id = thread.id
-            ref.set({'thread_id': thread_id, 'timestamp': int(time.time())})
-            logging.info(f"[ManyChat] Yeni thread oluşturuldu: {thread_id}")
+        previous_response_id = stored_data.get("previous_response_id")
 
-        openai.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=user_message,
-            extra_headers={"OpenAI-Beta": "assistants=v2"}
+        logging.info(
+            "ManyChat mesajı alındı. user_id=%s",
+            user_id
         )
 
-        run = openai.beta.threads.runs.create(
-            thread_id=thread_id,
-            assistant_id=assistant_id,
-            extra_headers={"OpenAI-Beta": "assistants=v2"}
+        bot_message, response_id = get_ai_response(
+            user_message.strip(),
+            previous_response_id
         )
 
-        while True:
-            run_status = openai.beta.threads.runs.retrieve(
-                thread_id=thread_id,
-                run_id=run.id,
-                extra_headers={"OpenAI-Beta": "assistants=v2"}
-            )
-            logging.info(f"[ManyChat] Run durumu: {run_status.status}")
-            if run_status.status == 'completed':
-                break
-            elif run_status.status == 'failed':
-                raise Exception("[ManyChat] OpenAI run failed.")
-            time.sleep(1)
-
-        headers = {
-            "Authorization": f"Bearer {openai.api_key}",
-            "OpenAI-Beta": "assistants=v2",
-            "Content-Type": "application/json"
-        }
-
-        response = requests.get(
-            f"https://api.openai.com/v1/threads/{thread_id}/messages",
-            headers=headers
-        )
-
-        if response.status_code != 200:
-            raise Exception(f"[ManyChat] OpenAI mesaj listeleme hatası: {response.text}")
-
-        messages_json = response.json()
-        # İşte burası güncellendi:
-        bot_message = messages_json['data'][0]['content'][0]['text']['value']
-
-        ref.update({'timestamp': int(time.time())})
-
-        logging.info(f"[ManyChat] Yanıt: {bot_message}")
+        ref.set({
+            "previous_response_id": response_id,
+            "timestamp": int(time.time())
+        })
 
         return jsonify({
             "response": bot_message,
-            "thread_id": thread_id
+            "thread_id": response_id,
+            "response_id": response_id
         })
 
-    except Exception as e:
-        logging.exception("[ManyChat] Hata oluştu:")
-        return jsonify({"response": str(e)}), 500
+    except Exception:
+        logging.exception("ManyChat sırasında hata oluştu.")
+        return jsonify({
+            "response": "Yanıt oluşturulurken bir hata oluştu. Lütfen tekrar deneyin."
+        }), 500
